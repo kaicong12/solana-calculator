@@ -1,4 +1,4 @@
-use crate::state;
+use crate::state::ComputeResult;
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{
     account_info::{AccountInfo, next_account_info},
@@ -17,7 +17,9 @@ pub fn process_initialize(program_id: &Pubkey, accounts: &[AccountInfo]) -> Prog
     let data_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
-    let account_space = 4; // Result with i32
+    // ComputeResult with Option<i32> needs maximum 5 bytes:
+    // 1 byte for Option discriminant + 4 bytes for i32 when Some
+    let account_space = 5;
     let rent = Rent::get()?;
     let required_lamports = rent.minimum_balance(account_space);
 
@@ -37,11 +39,10 @@ pub fn process_initialize(program_id: &Pubkey, accounts: &[AccountInfo]) -> Prog
         ],
     )?;
 
-    let data_struct = state::ComputeResult { result: Ok(0) };
-
-    // Get a mutable reference to the counter account's data
+    let result_data: ComputeResult = ComputeResult { result: Some(0) };
     let mut account_data = &mut data_account.data.borrow_mut()[..];
-    data_struct.serialize(&mut account_data)?;
+    result_data.serialize(&mut account_data)?;
+
     Ok(())
 }
 
@@ -60,22 +61,23 @@ pub fn process_increment(
         return Err(ProgramError::IncorrectProgramId);
     }
 
-    let result = match operator_str {
-        "+" => Ok(val1 + val2),
-        "-" => Ok(val1 - val2),
-        "*" => Ok(val1 * val2),
+    let result: Option<i32> = match operator_str {
+        "+" => Some(val1 + val2),
+        "-" => Some(val1 - val2),
+        "*" => Some(val1 * val2),
         "/" => {
             if val2 == 0 {
-                return Err(ProgramError::InvalidInstructionData);
+                None
+            } else {
+                Some(val1 / val2)
             }
-            Ok(val1 / val2)
         }
-        _ => Err(ProgramError::InvalidInstructionData),
+        _ => None,
     };
 
     let mut data = data_account.data.borrow_mut();
     // deserialize data living on Solana into Rust struct
-    let mut data_struct: state::ComputeResult = state::ComputeResult::try_from_slice(&data)?;
+    let mut data_struct: ComputeResult = ComputeResult::try_from_slice(&data)?;
     data_struct.result = result;
 
     // Serialize the updated counter data back into the account

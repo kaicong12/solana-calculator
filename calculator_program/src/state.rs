@@ -66,5 +66,5 @@ impl Instructions {
 
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
 pub struct ComputeResult {
-    pub result: Result<i32, ProgramError>,
+    pub result: Option<i32>,
 }
